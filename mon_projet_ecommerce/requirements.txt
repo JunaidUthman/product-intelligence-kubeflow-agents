@@ -1,0 +1,5 @@
+# Project dependencies
+# beautifulsoup4
+# selenium
+# openai
+# kfp
