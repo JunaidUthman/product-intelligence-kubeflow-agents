@@ -1,5 +1,4 @@
-# Project dependencies
-# beautifulsoup4
-# selenium
-# openai
-# kfp
+beautifulsoup4==4.14.3
+requests==2.33.1
+google-generativeai==0.8.6
+python-dotenv==1.2.2
