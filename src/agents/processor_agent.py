@@ -133,7 +133,6 @@ def setup_database():
                 nombre_avis INT,
                 stock VARCHAR(100),
                 score FLOAT DEFAULT NULL,
-                date_extraction DATETIME,
                 FOREIGN KEY (product_id) REFERENCES scraped_products(id) ON DELETE CASCADE,
                 FOREIGN KEY (session_id) REFERENCES scraping_sessions(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -172,8 +171,8 @@ def save_to_mysql(products: List[Dict[str, Any]]):
                 
                 # 3. Insertion dans product_scores
                 score_query = """
-                INSERT INTO product_scores (product_id, session_id, prix_original, prix_usd, note_etoiles, nombre_avis, stock, date_extraction)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO product_scores (product_id, session_id, prix_original, prix_usd, note_etoiles, nombre_avis, stock)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(score_query, (
                     db_product_id, 
@@ -182,8 +181,7 @@ def save_to_mysql(products: List[Dict[str, Any]]):
                     prod['prix_usd'], 
                     prod.get('note_etoiles'), 
                     prod.get('nombre_avis'), 
-                    prod.get('stock'),
-                    prod.get('date_extraction')
+                    prod.get('stock')
                 ))
                 
         conn.commit()

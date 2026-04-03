@@ -3,6 +3,8 @@ import json
 import asyncio
 import httpx
 import datetime
+import argparse
+import urllib.parse
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Response
 from openai import AsyncOpenAI
@@ -10,7 +12,6 @@ from dotenv import load_dotenv
 from typing import List, Dict, Any
 
 from generator_agent import get_scraping_targets
-import urllib.parse
 
 # Load environment variables from src/.env
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -471,10 +472,33 @@ async def smart_scrape(target: dict):
                 await browser.close()
 
 async def main():
+    parser = argparse.ArgumentParser(description="Agent Scraper - Intelligence Produit")
+    parser.add_argument("--target", type=str, help="Nom de la boutique à scraper (ex: Blackview)")
+    parser.add_argument("--list", action="store_true", help="Liste les boutiques disponibles")
+    
+    args = parser.parse_args()
     targets = get_scraping_targets()
-    print(f"🎯 Lancement du Super Pipeline -> Total de {len(targets)} cibles à scraper avec Scout Pattern.")
-    for target in targets:
-        await smart_scrape(target)
+    
+    if args.list:
+        print("\n🎯 Boutiques disponibles pour le scraping :")
+        for t in targets:
+            print(f"- {t['nom_boutique']} (Catégorie: {t['category']})")
+        return
+
+    if args.target:
+        # Filtrage par nom de boutique (insensible à la casse)
+        selected = [t for t in targets if t['nom_boutique'].lower() == args.target.lower()]
+        if not selected:
+            print(f"❌ Erreur : La boutique '{args.target}' n'existe pas dans generator_agent.py.")
+            print("Utilisez --list pour voir les options.")
+            return
+        
+        print(f"🎯 Lancement du Scraping ciblé -> {selected[0]['nom_boutique']}")
+        await smart_scrape(selected[0])
+    else:
+        print(f"🎯 Mode Séquentiel : Total de {len(targets)} cibles à scraper.")
+        for target in targets:
+            await smart_scrape(target)
 
 if __name__ == "__main__":
     asyncio.run(main())
