@@ -13,39 +13,30 @@ def get_scraping_targets() -> List[Dict[str, str]]:
         # 1. TÉLÉPHONES (PHONES)
         # ==========================================
         {
-            "nom_boutique": "Nothing Tech",
-            "url": "https://eu.redmagic.gg/collections/smartphones",
+            "nom_boutique": "Blackview",
+            "url": "https://store.blackview.hk/collections/smartphones",
             "platform": "shopify",
             "category": "phones"
         },
-    
-        # {
-        #     "nom_boutique": "RedMagic",
-        #     "url": "https://eu.redmagic.gg/collections/smartphones",
-        #     "platform": "shopify",
-        #     "category": "phones"
-        # },
+        # ==========================================
+        # 2. ORDINATEURS & MINI PCS (PCS)
+        # ==========================================
+        {
+            "nom_boutique": "Techsavers",
+            "url": "https://techsavers.com/collections/laptops",
+            "platform": "shopify",
+            "category": "pcs"
+        },
 
-    #     # ==========================================
-    #     # 2. ORDINATEURS (PCS)
-    #     # ==========================================
-        # {
-        #     "nom_boutique": "XOTIC PC",
-        #     "url": "https://xoticpc.com/collections/custom-gaming-laptops-notebooks",
-        #     "platform": "shopify",
-        #     "category": "pcs"
-        # },
-    
-
-    #     # ==========================================
-    #     # 3. CHARGEURS (CHARGERS)
-    #     # ==========================================
-        # {
-        #     "nom_boutique": "Anker US",
-        #     "url": "https://us.anker.com/collections/chargers",
-        #     "platform": "shopify",
-        #     "category": "chargers"
-        # }
+        # ==========================================
+        # 3. CHARGEURS & ALIMENTATION (CHARGERS)
+        # ==========================================
+        {
+            "nom_boutique": "Rolling Square",
+            "url": "https://rollingsquare.com/collections/all",
+            "platform": "shopify",
+            "category": "chargers"
+        }
     ]
     
     print(f"{len(targets)} sous-catégories prêtes pour le traitement distribué.")
