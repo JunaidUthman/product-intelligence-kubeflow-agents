@@ -42,13 +42,82 @@ async def call_deepseek(prompt: str) -> dict:
         print(f"❌ Erreur DeepSeek : {e}")
         return {}
 
-def clean_html_for_llm(html_content: str, max_chars: int = 15000) -> str:
+def extract_json_ld(soup: BeautifulSoup) -> dict:
+    """Extrait les données structurées JSON-LD de manière agressive."""
+    data = {}
+    scripts = soup.find_all('script', type='application/ld+json')
+    for script in scripts:
+        try:
+            if not script.string: continue
+            js = json.loads(script.string.strip())
+            
+            # Normalisation en liste d'objets
+            items = js if isinstance(js, list) else (js.get('@graph', [js]) if isinstance(js, dict) else [])
+            
+            for item in items:
+                if not isinstance(item, dict): continue
+                ptype = item.get('@type', [])
+                types = ptype if isinstance(ptype, list) else [ptype]
+                
+                if any(t in ['Product', 'http://schema.org/Product'] for t in types):
+                    data['name'] = item.get('name')
+                    data['description'] = item.get('description')
+                    offers = item.get('offers', {})
+                    if isinstance(offers, list) and offers:
+                        offers = offers[0]
+                    # Extraction du prix
+                    price_val = offers.get('price')
+                    currency = offers.get('priceCurrency', '')
+                    if price_val:
+                        data['price'] = f"{price_val} {currency}".strip()
+                    # ID produit
+                    data['product_id'] = item.get('sku') or item.get('productID') or item.get('mpn')
+                    return data
+        except Exception:
+            continue
+    return data
+
+def extract_meta_tags(soup: BeautifulSoup) -> dict:
+    """Fallback ultime via les Meta Tags SEO (OpenGraph, etc.)."""
+    data = {}
+    def get_meta(prop_or_name):
+        tag = soup.find('meta', property=prop_or_name) or soup.find('meta', attrs={"name": prop_or_name})
+        return tag.get('content') if tag else None
+
+    data['name'] = get_meta('og:title') or get_meta('twitter:title') or (soup.title.string if soup.title else None)
+    data['description'] = get_meta('og:description') or get_meta('description')
+    data['price'] = get_meta('product:price:amount')
+    currency = get_meta('product:price:currency')
+    if data['price'] and currency:
+        data['price'] = f"{data['price']} {currency}"
+    return data
+
+def clean_html_for_llm(html_content: str, max_chars: int = 80000) -> str:
     """Nettoie le HTML pour n'avoir que l'essentiel et réduire les tokens."""
     soup = BeautifulSoup(html_content, 'html.parser')
-    for tag in soup(['script', 'style', 'header', 'footer', 'nav', 'svg', 'img', 'noscript']):
+    
+    # Suppression des balises inutiles
+    for tag in soup(['script', 'style', 'noscript', 'svg', 'img', 'video', 'iframe', 'link', 'meta']):
+        # On garde JSON-LD car il contient souvent toutes les infos (Price, SKU, Name)
+        if tag.name == 'script' and tag.get('type') == 'application/ld+json':
+            continue
         tag.decompose()
-    body = soup.find('body')
-    return str(body)[:max_chars] if body else str(soup)[:max_chars]
+        
+    # Retirer les attributs très longs mais inutiles pour le scraping
+    for tag in soup.find_all(True):
+        for attr in ['style', 'd', 'srcset', 'sizes']:
+            if attr in tag.attrs:
+                del tag.attrs[attr]
+            
+    # Ciblage prioritaire du contenu principal
+    main_content = soup.find('main') or soup.find(id='MainContent') or soup.find(id='content') or soup.find(itemtype="http://schema.org/Product")
+    if main_content:
+        content_str = str(main_content)
+    else:
+        body = soup.find('body')
+        content_str = str(body) if body else str(soup)
+        
+    return content_str[:max_chars]
 
 async def extract_catalog_links(page: Page, target: dict) -> List[str]:
     """ÉTAPE 1 : Extraction des URLs des PDP depuis la page catalogue."""
@@ -57,7 +126,7 @@ async def extract_catalog_links(page: Page, target: dict) -> List[str]:
     await page.goto(target["url"], wait_until="domcontentloaded", timeout=60000)
     await page.wait_for_timeout(3000) # Laisser le temps au JS d'insérer les liens
     html_content = await page.content()
-    clean_html = clean_html_for_llm(html_content, max_chars=12000)
+    clean_html = clean_html_for_llm(html_content, max_chars=40000)
     
     prompt = f"""
     Voici le HTML nettoyé d'une page catalogue de produits e-commerce ({target['url']}).
@@ -127,7 +196,7 @@ async def run_scout_analysis(page: Page, first_product_url: str) -> tuple[dict, 
     await page.wait_for_timeout(5000) # Donner du temps pour les requêtes réseau (reviews)
     
     html_content = await page.content()
-    clean_html = clean_html_for_llm(html_content, max_chars=15000)
+    clean_html = clean_html_for_llm(html_content, max_chars=80000)
     
     # Phase 2A : Analyse des requêtes réseaux par le LLM (Avis du produit)
     reviews_api_url_template = None
@@ -165,21 +234,27 @@ async def run_scout_analysis(page: Page, first_product_url: str) -> tuple[dict, 
     # Phase 2B : Analyse HTML de la structure de la page produit PDP
     print("🔍 Scout analyse le HTML interne de la page pour cibler les données...")
     prompt_html = f"""
-    Voici le HTML nettoyé de la même page produit {first_product_url}.
-    Extrais les sélecteurs CSS EXACTS pour les infos suivantes. Tu DOIS toujours renvoyer un JSON.
-    - "name_selector": le nom du produit (ex: "h1.title")
-    - "price_selector": le prix du produit
-    - "description_selector": le sélecteur pour la description complète (ex: "#detail-desc")
-    - "product_id_selector": le sélecteur de l'élément contenant l'ID (meta, div caché, url canonical...). Mets `null` si introuvable.
-    - "product_id_attribute": l'attribut contenant l'ID du produit (ex: "data-product-id", "content", ou "text").
+    Voici le HTML nettoyé d'une page produit PDP ({first_product_url}).
+    Le site tourne probablement sous Shopify ou WooCommerce. 
+    
+    CONSIGNE CRITIQUE : Trouve des sélecteurs STABLES et GÉNÉRIQUES. Évite les IDs contenant des chiffres aléatoires (ex: #product-1234). 
+    Privilégie les classes sémantiques (ex: .product-title, .price, .product-single__price).
+    Regarde attentivement si un bloc <script type="application/ld+json"> existe, il contient souvent "name", "price" et "description".
+
+    Extrais les sélecteurs CSS EXACTS pour :
+    - "name_selector": le nom du produit (ex: "h1", ".product-title")
+    - "price_selector": le prix (ex: ".price", "span[itemprop='price']", ".money")
+    - "description_selector": le bloc de description (ex: ".product-description", "#description", ".rte")
+    - "product_id_selector": l'élément contenant l'identifiant unique (ex: "input[name='id']", "meta[itemprop='sku']", "[data-product-id]")
+    - "product_id_attribute": l'attribut à lire (ex: "value", "content", "data-product-id" ou "text")
 
     Réponds en JSON strict :
     {{
         "name_selector": "h1.product-title",
-        "price_selector": "span.price",
-        "description_selector": "div.description",
-        "product_id_selector": "div.product-metadata",
-        "product_id_attribute": "data-id"
+        "price_selector": "span.price-item--regular",
+        "description_selector": ".product__description",
+        "product_id_selector": "input[name='id']",
+        "product_id_attribute": "value"
     }}
     HTML:
     {clean_html}
@@ -233,6 +308,21 @@ async def fast_track_extraction(target: dict, urls: List[str], scout_config: dic
                 price = extract(scout_config.get("price_selector"))
                 description = extract(scout_config.get("description_selector"))
                 product_id = extract(scout_config.get("product_id_selector"), scout_config.get("product_id_attribute"))
+                
+                # FALLBACK 1 : JSON-LD (Si les sélecteurs CSS échouent à cause du manque de rendu JS)
+                if not name or not price:
+                    json_ld_data = extract_json_ld(soup)
+                    name = name or json_ld_data.get('name')
+                    price = price or json_ld_data.get('price')
+                    description = description or json_ld_data.get('description')
+                    product_id = product_id or json_ld_data.get('product_id')
+                
+                # FALLBACK 2 : Meta Tags (Si JSON-LD est absent ou incomplet)
+                if not name or not price:
+                    meta_data = extract_meta_tags(soup)
+                    name = name or meta_data.get('name')
+                    price = price or meta_data.get('price')
+                    description = description or meta_data.get('description')
                 
                 # Gestion de la note et des avis
                 stars = None
