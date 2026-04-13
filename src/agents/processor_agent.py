@@ -32,8 +32,11 @@ def normalize_price_to_usd(price_str: str) -> float:
 
 def clean_and_aggregate_data() -> List[Dict[str, Any]]:
     """Agrège tous les fichiers JSON, dédoublonne et nettoie les valeurs."""
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(os.path.dirname(project_root), "data")
+    data_dir = os.environ.get("DATA_DIR")
+    if not data_dir:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(os.path.dirname(project_root), "data")
+    
     json_files = glob.glob(os.path.join(data_dir, "*.json"))
     
     all_products = []

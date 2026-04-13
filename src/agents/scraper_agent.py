@@ -451,9 +451,12 @@ async def smart_scrape(target: dict):
             # ÉTAPE 3
             results = await fast_track_extraction(target, urls, scout_config, first_rating)
             
-            # ÉTAPE FINALE : SAUVEGARDE (Dossier data à la racine du projet)
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/
-            data_dir = os.path.join(os.path.dirname(project_root), "data")
+            # ÉTAPE FINALE : SAUVEGARDE (Dossier data à la racine du projet ou via ENV)
+            data_dir = os.environ.get("DATA_DIR")
+            if not data_dir:
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/
+                data_dir = os.path.join(os.path.dirname(project_root), "data")
+            
             os.makedirs(data_dir, exist_ok=True)
             
             safe_name = str(target.get('nom_boutique', 'Cible')).replace(' ', '_')
