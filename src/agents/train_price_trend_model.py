@@ -153,10 +153,6 @@ def train_and_export_model(df: pd.DataFrame):
     
     model.fit(X_train, y_train)
     
-    y_pred = model.predict(X_test)
-    report = classification_report(y_test, y_pred, target_names=['BAISSE', 'STABLE', 'HAUSSE'], zero_division=0)
-    logger.info(f"📊 Rapport de classification :\n\n{report}")
-    
     # 5. Sauvegarde dans le dossier models/ à la racine du projet
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     models_dir = os.path.join(project_root, 'models')
