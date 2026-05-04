@@ -451,11 +451,11 @@ async def smart_scrape(target: dict):
             # ÉTAPE 3
             results = await fast_track_extraction(target, urls, scout_config, first_rating)
             
-            # ÉTAPE FINALE : SAUVEGARDE (Dossier data à la racine du projet ou via ENV)
+            # ÉTAPE FINALE : SAUVEGARDE (Strictement via le Volume PVC)
             data_dir = os.environ.get("DATA_DIR")
             if not data_dir:
-                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/
-                data_dir = os.path.join(os.path.dirname(project_root), "data")
+                print("❌ ERREUR CRITIQUE : L'agent doit être orchestré avec une variable d'environnement DATA_DIR pointant vers le volume partagé.")
+                return
             
             os.makedirs(data_dir, exist_ok=True)
             
@@ -476,10 +476,32 @@ async def smart_scrape(target: dict):
 
 async def main():
     parser = argparse.ArgumentParser(description="Agent Scraper - Intelligence Produit")
-    parser.add_argument("--target", type=str, help="Nom de la boutique à scraper (ex: Blackview)")
+    
+    # Mode 1 : Pipeline Kubeflow (Direct Arguments)
+    parser.add_argument("--url", type=str, help="URL exacte à scraper")
+    parser.add_argument("--boutique", type=str, help="Nom de la boutique")
+    parser.add_argument("--category", type=str, help="Catégorie (phones, pcs, chargers)")
+    parser.add_argument("--platform", type=str, default="shopify", help="Plateforme (shopify, etc.)")
+    
+    # Mode 2 : Manuel/Séquentiel (Historique)
+    parser.add_argument("--target", type=str, help="Nom de la boutique à scraper via le générateur")
     parser.add_argument("--list", action="store_true", help="Liste les boutiques disponibles")
     
     args = parser.parse_args()
+
+    # --- CAS 1 : Appel direct par Kubeflow (Un seul target passé en arguments) ---
+    if args.url and args.boutique and args.category:
+        direct_target = {
+            "nom_boutique": args.boutique,
+            "url": args.url,
+            "category": args.category,
+            "platform": args.platform
+        }
+        print(f"🎯 KFP Orchestration -> Scraping direct de {args.boutique} ({args.category})")
+        await smart_scrape(direct_target)
+        return
+
+    # --- CAS 2 : Logique historique ---
     targets = get_scraping_targets()
     
     if args.list:
@@ -489,17 +511,13 @@ async def main():
         return
 
     if args.target:
-        # Filtrage par nom de boutique (insensible à la casse)
         selected = [t for t in targets if t['nom_boutique'].lower() == args.target.lower()]
         if not selected:
-            print(f"❌ Erreur : La boutique '{args.target}' n'existe pas dans generator_agent.py.")
-            print("Utilisez --list pour voir les options.")
+            print(f"❌ Erreur : '{args.target}' non trouvée.")
             return
-        
-        print(f"🎯 Lancement du Scraping ciblé -> {selected[0]['nom_boutique']}")
         await smart_scrape(selected[0])
     else:
-        print(f"🎯 Mode Séquentiel : Total de {len(targets)} cibles à scraper.")
+        print(f"🎯 Mode Séquentiel : {len(targets)} cibles.")
         for target in targets:
             await smart_scrape(target)
 

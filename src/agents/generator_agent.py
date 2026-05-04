@@ -43,8 +43,22 @@ def get_scraping_targets() -> List[Dict[str, str]]:
     
     return targets
 
-# --- Test local ---
+# --- Test local & KFP output ---
 if __name__ == "__main__":
+    import json
+    import sys
+    
     cibles = get_scraping_targets()
-    for cible in cibles:
-        print(f"[{cible['platform'].upper()}] - {cible['nom_boutique']} : Catégorie '{cible['category']}' -> {cible['url']}")
+    
+    # KFP compatibility: output JSON if requested
+    if len(sys.argv) > 1 and sys.argv[1] == "--json":
+        output = json.dumps(cibles)
+        print(output)
+        
+        # If a second argument is provided, it's the KFP output file path
+        if len(sys.argv) > 2:
+            with open(sys.argv[2], "w") as f:
+                f.write(output)
+    else:
+        for cible in cibles:
+            print(f"[{cible['platform'].upper()}] - {cible['nom_boutique']} : Catégorie '{cible['category']}' -> {cible['url']}")

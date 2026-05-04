@@ -1,0 +1,348 @@
+# PIPELINE DEFINITION
+# Name: product-intelligence-full-pipeline
+# Description: Pipeline A to Z : Generation -> Parallel Scraping -> Processing -> Ranking -> Training
+components:
+  comp-for-loop-1:
+    dag:
+      tasks:
+        scraper-task:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-scraper-task
+          inputs:
+            parameters:
+              boutique:
+                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                parameterExpressionSelector: parseJson(string_value)["nom_boutique"]
+              category:
+                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                parameterExpressionSelector: parseJson(string_value)["category"]
+              platform:
+                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                parameterExpressionSelector: parseJson(string_value)["platform"]
+              url:
+                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                parameterExpressionSelector: parseJson(string_value)["url"]
+          taskInfo:
+            name: Parallel Scraper
+    inputDefinitions:
+      parameters:
+        pipelinechannel--generator-task-output_list:
+          parameterType: LIST
+        pipelinechannel--generator-task-output_list-loop-item:
+          parameterType: STRING
+  comp-generator-task:
+    executorLabel: exec-generator-task
+    outputDefinitions:
+      parameters:
+        output_list:
+          parameterType: LIST
+  comp-processor-task:
+    executorLabel: exec-processor-task
+  comp-ranking-task:
+    executorLabel: exec-ranking-task
+  comp-scraper-task:
+    executorLabel: exec-scraper-task
+    inputDefinitions:
+      parameters:
+        boutique:
+          parameterType: STRING
+        category:
+          parameterType: STRING
+        platform:
+          parameterType: STRING
+        url:
+          parameterType: STRING
+  comp-training-task:
+    executorLabel: exec-training-task
+deploymentSpec:
+  executors:
+    exec-generator-task:
+      container:
+        args:
+        - src/agents/generator_agent.py
+        - --json
+        - '{{$.outputs.parameters[''output_list''].output_file}}'
+        command:
+        - python3
+        image: product-intel-agents:latest
+    exec-processor-task:
+      container:
+        args:
+        - src/agents/processor_agent.py
+        command:
+        - python3
+        env:
+        - name: DATA_DIR
+          value: /app/data
+        image: product-intel-agents:latest
+    exec-ranking-task:
+      container:
+        args:
+        - src/agents/ranking_agent.py
+        command:
+        - python3
+        image: product-intel-agents:latest
+    exec-scraper-task:
+      container:
+        args:
+        - src/agents/scraper_agent.py
+        - --boutique
+        - '{{$.inputs.parameters[''boutique'']}}'
+        - --url
+        - '{{$.inputs.parameters[''url'']}}'
+        - --category
+        - '{{$.inputs.parameters[''category'']}}'
+        - --platform
+        - '{{$.inputs.parameters[''platform'']}}'
+        command:
+        - python3
+        env:
+        - name: DATA_DIR
+          value: /app/data
+        image: product-intel-agents:latest
+    exec-training-task:
+      container:
+        args:
+        - src/agents/train_price_trend_model.py
+        command:
+        - python3
+        image: product-intel-agents:latest
+pipelineInfo:
+  description: 'Pipeline A to Z : Generation -> Parallel Scraping -> Processing ->
+    Ranking -> Training'
+  name: product-intelligence-full-pipeline
+root:
+  dag:
+    tasks:
+      for-loop-1:
+        componentRef:
+          name: comp-for-loop-1
+        dependentTasks:
+        - generator-task
+        inputs:
+          parameters:
+            pipelinechannel--generator-task-output_list:
+              taskOutputParameter:
+                outputParameterKey: output_list
+                producerTask: generator-task
+        parameterIterator:
+          itemInput: pipelinechannel--generator-task-output_list-loop-item
+          items:
+            inputParameter: pipelinechannel--generator-task-output_list
+        taskInfo:
+          name: for-loop-1
+      generator-task:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generator-task
+        taskInfo:
+          name: generator-task
+      processor-task:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-processor-task
+        dependentTasks:
+        - for-loop-1
+        taskInfo:
+          name: processor-task
+      ranking-task:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-ranking-task
+        dependentTasks:
+        - processor-task
+        taskInfo:
+          name: ranking-task
+      training-task:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-training-task
+        dependentTasks:
+        - ranking-task
+        taskInfo:
+          name: training-task
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-processor-task:
+          pvcMount:
+          - constant: product-intel-pvc
+            mountPath: /app/data
+            pvcNameParameter:
+              runtimeValue:
+                constant: product-intel-pvc
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: MYSQL_HOST
+              secretKey: MYSQL_HOST
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_USER
+              secretKey: MYSQL_USER
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_PASSWORD
+              secretKey: MYSQL_PASSWORD
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_DATABASE
+              secretKey: MYSQL_DATABASE
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+        exec-ranking-task:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: MYSQL_HOST
+              secretKey: MYSQL_HOST
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_USER
+              secretKey: MYSQL_USER
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_PASSWORD
+              secretKey: MYSQL_PASSWORD
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_DATABASE
+              secretKey: MYSQL_DATABASE
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+        exec-scraper-task:
+          pvcMount:
+          - constant: product-intel-pvc
+            mountPath: /app/data
+            pvcNameParameter:
+              runtimeValue:
+                constant: product-intel-pvc
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: MYSQL_HOST
+              secretKey: MYSQL_HOST
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_USER
+              secretKey: MYSQL_USER
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_PASSWORD
+              secretKey: MYSQL_PASSWORD
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_DATABASE
+              secretKey: MYSQL_DATABASE
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: DEEPSEEK_API_KEY
+              secretKey: DEEPSEEK_API_KEY
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+        exec-training-task:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: MYSQL_HOST
+              secretKey: MYSQL_HOST
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_USER
+              secretKey: MYSQL_USER
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_PASSWORD
+              secretKey: MYSQL_PASSWORD
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: MYSQL_DATABASE
+              secretKey: MYSQL_DATABASE
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: HF_TOKEN
+              secretKey: HF_TOKEN
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
+          - keyToEnv:
+            - envVar: HF_REPO_ID
+              secretKey: HF_REPO_ID
+            optional: false
+            secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
