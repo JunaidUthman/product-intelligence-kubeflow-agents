@@ -17,7 +17,7 @@ def get_scraping_targets() -> List[Dict[str, str]]:
             "url": "https://store.blackview.hk/collections/smartphones",
             "platform": "shopify",
             "category": "phones"
-        }
+        },
         # ==========================================
         # 2. ORDINATEURS & MINI PCS (PCS)
         # ==========================================

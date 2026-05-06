@@ -67,6 +67,15 @@ def extract_json_ld(soup: BeautifulSoup) -> dict:
                     data['name'] = item.get('name')
                     data['description'] = item.get('description')
                     
+                    # Image extraction from JSON-LD
+                    raw_image = item.get('image')
+                    if isinstance(raw_image, list) and raw_image:
+                        raw_image = raw_image[0]
+                    if isinstance(raw_image, dict):
+                        raw_image = raw_image.get('url') or raw_image.get('@id')
+                    if isinstance(raw_image, str):
+                        data['image'] = raw_image
+                    
                     # Extraction des notes (ratings)
                     rating = item.get('aggregateRating')
                     if isinstance(rating, dict):
@@ -104,6 +113,7 @@ def extract_meta_tags(soup: BeautifulSoup) -> dict:
     data['price'] = get_meta('product:price:amount')
     data['product_id'] = get_meta('product:reference') or get_meta('og:product:group_id')
     data['stock'] = get_meta('og:availability') or get_meta('product:availability')
+    data['image'] = get_meta('og:image') or get_meta('twitter:image')
     
     currency = get_meta('product:price:currency')
     if data['price'] and currency:
@@ -274,6 +284,8 @@ async def run_scout_analysis(page: Page, first_product_url: str) -> tuple[dict, 
     - "stars_attribute": l'attribut contenant la note (ex: "data-score", "aria-label", "text").
     - "stock_selector": le sélecteur pour le stock (ex: ".inventory", ".stock-status", ".product-form__inventory").
     - "stock_attribute": l'attribut pour le stock (ex: "text", "data-stock").
+    - "image_selector": le sélecteur CSS pour l'image principale du produit (ex: ".product__media img", ".product-single__photo img", "img.featured-image"). Cherche la balise <img> principale de la fiche produit.
+    - "image_attribute": l'attribut contenant l'URL de l'image (presque toujours "src", parfois "data-src" ou "data-srcset" sur les sites avec lazy-loading).
 
     Réponds en JSON strict :
     {{
@@ -285,7 +297,9 @@ async def run_scout_analysis(page: Page, first_product_url: str) -> tuple[dict, 
         "stars_selector": ".stars-container",
         "stars_attribute": "data-rating",
         "stock_selector": ".stock-status",
-        "stock_attribute": "text"
+        "stock_attribute": "text",
+        "image_selector": ".product__media img",
+        "image_attribute": "src"
     }}
     HTML:
     {clean_html}
@@ -339,26 +353,34 @@ async def fast_track_extraction(target: dict, urls: List[str], scout_config: dic
                 price = extract(scout_config.get("price_selector"))
                 description = extract(scout_config.get("description_selector"))
                 product_id = extract(scout_config.get("product_id_selector"), scout_config.get("product_id_attribute"))
-                
-                # FALLBACK 2 : Meta Tags (Si JSON-LD est absent ou incomplet)
                 stock = extract(scout_config.get("stock_selector"), scout_config.get("stock_attribute"))
-                
-                if not name or not price or not product_id or not stock:
+
+                # Image : sélecteur CSS Scout
+                image_attr = scout_config.get("image_attribute", "src")
+                image_url = extract(scout_config.get("image_selector"), image_attr if image_attr != "text" else None)
+                # Normalize protocol-relative URLs (//cdn.example.com/img.jpg)
+                if image_url and image_url.startswith('//'):
+                    image_url = 'https:' + image_url
+
+                # FALLBACK : Meta Tags (og:image, twitter:image, og:title, etc.)
+                if not name or not price or not product_id or not stock or not image_url:
                     meta_data = extract_meta_tags(soup)
                     name = name or meta_data.get('name')
                     price = price or meta_data.get('price')
                     description = description or meta_data.get('description')
                     product_id = product_id or meta_data.get('product_id')
                     stock = stock or meta_data.get('stock')
-                
-                # FALLBACK 1 : JSON-LD (Si tjs vide)
-                if not name or not price or not stock:
+                    image_url = image_url or meta_data.get('image')
+
+                # FALLBACK : JSON-LD (structured data — most reliable for SEO-friendly sites)
+                if not name or not price or not stock or not image_url:
                     json_ld_data = extract_json_ld(soup)
                     name = name or json_ld_data.get('name')
                     price = price or json_ld_data.get('price')
                     description = description or json_ld_data.get('description')
                     product_id = product_id or json_ld_data.get('product_id')
                     stock = stock or json_ld_data.get('stock')
+                    image_url = image_url or json_ld_data.get('image')
                 
                 # Gestion de la note et des avis
                 stars = None
@@ -415,6 +437,7 @@ async def fast_track_extraction(target: dict, urls: List[str], scout_config: dic
                     "lien": url,
                     "product_id": product_id,
                     "stock": stock,
+                    "image_url": image_url,
                     "date_extraction": datetime.datetime.now().isoformat()
                 }
                 scraped_data.append(prod_item)

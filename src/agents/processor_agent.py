@@ -68,9 +68,10 @@ def clean_and_aggregate_data() -> List[Dict[str, Any]]:
                         "description": item.get("description", ""),
                         "note_etoiles": item.get("note_etoiles") if item.get("note_etoiles") is not None else 4.1,
                         "nombre_avis": item.get("nombre_avis") if item.get("nombre_avis") is not None else 0,
-                        "stock": item.get("stock", "Unknown"),
+                        "stock": str(item.get("stock", "Unknown") or "Unknown")[:255].strip(),
                         "lien": link,
                         "product_id": item.get("product_id", "N/A"),
+                        "image_url": item.get("image_url"),
                         "date_extraction": item.get("date_extraction")
                     }
                     all_products.append(cleaned_item)
@@ -120,9 +121,16 @@ def setup_database():
                 description TEXT,
                 lien TEXT,
                 product_id VARCHAR(100),
+                image_url TEXT,
                 UNIQUE KEY unique_prod_url (lien(255))
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
+            
+            # Migration: add image_url if column doesn't exist on older installs
+            cursor.execute("SHOW COLUMNS FROM scraped_products LIKE 'image_url'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scraped_products ADD COLUMN image_url TEXT AFTER product_id")
+                print("ℹ️ Migration: colonne image_url ajoutée à scraped_products.")
             
             # 3. Table des Scores et Historique
             cursor.execute("""
@@ -134,13 +142,20 @@ def setup_database():
                 prix_usd FLOAT,
                 note_etoiles FLOAT,
                 nombre_avis INT,
-                stock VARCHAR(100),
+                stock TEXT,
                 score FLOAT DEFAULT NULL,
                 FOREIGN KEY (product_id) REFERENCES scraped_products(id) ON DELETE CASCADE,
                 FOREIGN KEY (session_id) REFERENCES scraping_sessions(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
-            
+
+            # Migration: change stock column from VARCHAR(100) to TEXT if needed
+            cursor.execute("SHOW COLUMNS FROM product_scores LIKE 'stock'")
+            stock_col = cursor.fetchone()
+            if stock_col and 'varchar' in str(stock_col[1]).lower():
+                cursor.execute("ALTER TABLE product_scores MODIFY COLUMN stock TEXT")
+                print("ℹ️ Migration: colonne stock élargie à TEXT dans product_scores.")
+
         conn.commit()
         print(f"🗄️ Structure de base de données normalisée prête dans '{DB_CONFIG['database']}'.")
     finally:
@@ -158,13 +173,14 @@ def save_to_mysql(products: List[Dict[str, Any]]):
             for prod in products:
                 # 2. Upsert dans scraped_products
                 upsert_product_query = """
-                INSERT INTO scraped_products (boutique, categorie, nom, description, lien, product_id)
-                VALUES (%(boutique)s, %(categorie)s, %(nom)s, %(description)s, %(lien)s, %(product_id)s)
+                INSERT INTO scraped_products (boutique, categorie, nom, description, lien, product_id, image_url)
+                VALUES (%(boutique)s, %(categorie)s, %(nom)s, %(description)s, %(lien)s, %(product_id)s, %(image_url)s)
                 ON DUPLICATE KEY UPDATE 
                     nom = VALUES(nom), 
                     description = VALUES(description), 
                     product_id = VALUES(product_id),
-                    categorie = VALUES(categorie)
+                    categorie = VALUES(categorie),
+                    image_url = VALUES(image_url)
                 """
                 cursor.execute(upsert_product_query, prod)
                 
