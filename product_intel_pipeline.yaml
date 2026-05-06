@@ -86,7 +86,7 @@ deploymentSpec:
         - '{{$.outputs.parameters[''output_list''].output_file}}'
         command:
         - python3
-        image: product-intel-agents:v1
+        image: product-intel-agents:v3
     exec-processor-task:
       container:
         args:
@@ -96,14 +96,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:v1
+        image: product-intel-agents:v3
     exec-ranking-task:
       container:
         args:
         - src/agents/ranking_agent.py
         command:
         - python3
-        image: product-intel-agents:v1
+        image: product-intel-agents:v3
     exec-scraper-task:
       container:
         args:
@@ -121,14 +121,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:v1
+        image: product-intel-agents:v3
     exec-training-task:
       container:
         args:
         - src/agents/train_price_trend_model.py
         command:
         - python3
-        image: product-intel-agents:v1
+        image: product-intel-agents:v3
 pipelineInfo:
   description: 'Pipeline A to Z : Generation -> Parallel Scraping -> Processing ->
     Ranking -> Training'
