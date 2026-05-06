@@ -13,24 +13,24 @@ components:
           inputs:
             parameters:
               boutique:
-                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                componentInputParameter: pipelinechannel--targets-loop-item
                 parameterExpressionSelector: parseJson(string_value)["nom_boutique"]
               category:
-                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                componentInputParameter: pipelinechannel--targets-loop-item
                 parameterExpressionSelector: parseJson(string_value)["category"]
               platform:
-                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                componentInputParameter: pipelinechannel--targets-loop-item
                 parameterExpressionSelector: parseJson(string_value)["platform"]
               url:
-                componentInputParameter: pipelinechannel--generator-task-output_list-loop-item
+                componentInputParameter: pipelinechannel--targets-loop-item
                 parameterExpressionSelector: parseJson(string_value)["url"]
           taskInfo:
             name: Parallel Scraper
     inputDefinitions:
       parameters:
-        pipelinechannel--generator-task-output_list:
+        pipelinechannel--targets:
           parameterType: LIST
-        pipelinechannel--generator-task-output_list-loop-item:
+        pipelinechannel--targets-loop-item:
           parameterType: STRING
   comp-generator-task:
     executorLabel: exec-generator-task
@@ -54,6 +54,26 @@ components:
           parameterType: STRING
         url:
           parameterType: STRING
+  comp-scraping-group:
+    dag:
+      tasks:
+        for-loop-1:
+          componentRef:
+            name: comp-for-loop-1
+          inputs:
+            parameters:
+              pipelinechannel--targets:
+                componentInputParameter: targets
+          parameterIterator:
+            itemInput: pipelinechannel--targets-loop-item
+            items:
+              inputParameter: pipelinechannel--targets
+          taskInfo:
+            name: for-loop-1
+    inputDefinitions:
+      parameters:
+        targets:
+          parameterType: LIST
   comp-training-task:
     executorLabel: exec-training-task
 deploymentSpec:
@@ -66,7 +86,7 @@ deploymentSpec:
         - '{{$.outputs.parameters[''output_list''].output_file}}'
         command:
         - python3
-        image: product-intel-agents:latest
+        image: product-intel-agents:v1
     exec-processor-task:
       container:
         args:
@@ -76,14 +96,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:latest
+        image: product-intel-agents:v1
     exec-ranking-task:
       container:
         args:
         - src/agents/ranking_agent.py
         command:
         - python3
-        image: product-intel-agents:latest
+        image: product-intel-agents:v1
     exec-scraper-task:
       container:
         args:
@@ -101,14 +121,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:latest
+        image: product-intel-agents:v1
     exec-training-task:
       container:
         args:
         - src/agents/train_price_trend_model.py
         command:
         - python3
-        image: product-intel-agents:latest
+        image: product-intel-agents:v1
 pipelineInfo:
   description: 'Pipeline A to Z : Generation -> Parallel Scraping -> Processing ->
     Ranking -> Training'
@@ -116,23 +136,6 @@ pipelineInfo:
 root:
   dag:
     tasks:
-      for-loop-1:
-        componentRef:
-          name: comp-for-loop-1
-        dependentTasks:
-        - generator-task
-        inputs:
-          parameters:
-            pipelinechannel--generator-task-output_list:
-              taskOutputParameter:
-                outputParameterKey: output_list
-                producerTask: generator-task
-        parameterIterator:
-          itemInput: pipelinechannel--generator-task-output_list-loop-item
-          items:
-            inputParameter: pipelinechannel--generator-task-output_list
-        taskInfo:
-          name: for-loop-1
       generator-task:
         cachingOptions:
           enableCache: true
@@ -146,7 +149,7 @@ root:
         componentRef:
           name: comp-processor-task
         dependentTasks:
-        - for-loop-1
+        - scraping-group
         taskInfo:
           name: processor-task
       ranking-task:
@@ -158,6 +161,21 @@ root:
         - processor-task
         taskInfo:
           name: ranking-task
+      scraping-group:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-scraping-group
+        dependentTasks:
+        - generator-task
+        inputs:
+          parameters:
+            targets:
+              taskOutputParameter:
+                outputParameterKey: output_list
+                producerTask: generator-task
+        taskInfo:
+          name: scraping-group
       training-task:
         cachingOptions:
           enableCache: true

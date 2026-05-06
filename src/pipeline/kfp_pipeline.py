@@ -8,7 +8,7 @@ from kfp.compiler import Compiler
 # ==============================================================================
 PVC_NAME = "product-intel-pvc"
 SECRET_NAME = "product-intel-secrets"
-IMAGE_NAME = "product-intel-agents:latest" # À adapter selon votre registry local
+IMAGE_NAME = "product-intel-agents:v1"
 DATA_DIR = "/app/data"
 
 # ==============================================================================
@@ -66,9 +66,20 @@ def training_task():
         args=["src/agents/train_price_trend_model.py"]
     )
 
-# ==============================================================================
-# DÉFINITION DU PIPELINE (DAG)
-# ==============================================================================
+@dsl.pipeline(name="scraping-group", description="Exécute les scrapers en parallèle")
+def scraping_group(targets: list):
+    with dsl.ParallelFor(targets) as target:
+        scrape = scraper_task(
+            boutique=target.nom_boutique,
+            url=target.url,
+            category=target.category,
+            platform=target.platform
+        )
+        scrape.set_display_name("Parallel Scraper")
+        kubernetes.mount_pvc(scrape, pvc_name=PVC_NAME, mount_path=DATA_DIR)
+        scrape.set_env_variable("DATA_DIR", DATA_DIR)
+        for key in ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE", "DEEPSEEK_API_KEY"]:
+            kubernetes.use_secret_as_env(scrape, secret_name=SECRET_NAME, secret_key_to_env={key: key})
 
 @dsl.pipeline(
     name="product-intelligence-full-pipeline",
@@ -78,26 +89,11 @@ def product_intel_pipeline():
     # 1. Génération des cibles
     gen = generator_task()
     
-    # 2. Scraping en Parallèle
-    with dsl.ParallelFor(gen.outputs['output_list']) as target:
-        scrape = scraper_task(
-            boutique=target.nom_boutique,
-            url=target.url,
-            category=target.category,
-            platform=target.platform
-        )
-        
-        # Infra : Volume & Secret
-        scrape.set_display_name("Parallel Scraper")
-        kubernetes.mount_pvc(scrape, pvc_name=PVC_NAME, mount_path=DATA_DIR)
-        scrape.set_env_variable("DATA_DIR", DATA_DIR)
-        
-        # Injecter toutes les clés du secret
-        for key in ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE", "DEEPSEEK_API_KEY"]:
-            kubernetes.use_secret_as_env(scrape, secret_name=SECRET_NAME, secret_key_to_env={key: key})
+    # 2. Scraping en Parallèle (via sous-pipeline)
+    scrapes = scraping_group(targets=gen.outputs['output_list'])
 
     # 3. Processeur
-    proc = processor_task().after(scrape)
+    proc = processor_task().after(scrapes)
     kubernetes.mount_pvc(proc, pvc_name=PVC_NAME, mount_path=DATA_DIR)
     proc.set_env_variable("DATA_DIR", DATA_DIR)
     for key in ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]:
