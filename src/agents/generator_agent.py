@@ -21,22 +21,22 @@ def get_scraping_targets() -> List[Dict[str, str]]:
         # ==========================================
         # 2. ORDINATEURS & MINI PCS (PCS)
         # ==========================================
-        # {
-        #     "nom_boutique": "Techsavers",
-        #     "url": "https://techsavers.com/collections/laptops",
-        #     "platform": "shopify",
-        #     "category": "pcs"
-        # },
+        {
+            "nom_boutique": "Techsavers",
+            "url": "https://techsavers.com/collections/laptops",
+            "platform": "shopify",
+            "category": "pcs"
+        },
 
-        # # ==========================================
-        # # 3. CHARGEURS & ALIMENTATION (CHARGERS)
-        # # ==========================================
-        # {
-        #     "nom_boutique": "Rolling Square",
-        #     "url": "https://rollingsquare.com/collections/all",
-        #     "platform": "shopify",
-        #     "category": "chargers"
-        # }
+        # ==========================================
+        # 3. CHARGEURS & ALIMENTATION (CHARGERS)
+        # ==========================================
+        {
+            "nom_boutique": "Rolling Square",
+            "url": "https://rollingsquare.com/collections/all",
+            "platform": "shopify",
+            "category": "chargers"
+        }
     ]
     
     print(f"{len(targets)} sous-catégories prêtes pour le traitement distribué.")

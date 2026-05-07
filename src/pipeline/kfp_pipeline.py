@@ -8,7 +8,7 @@ from kfp.compiler import Compiler
 # ==============================================================================
 PVC_NAME = "product-intel-pvc"
 SECRET_NAME = "product-intel-secrets"
-IMAGE_NAME = "product-intel-agents:v3"
+IMAGE_NAME = "product-intel-agents:v4"
 DATA_DIR = "/app/data"
 
 # ==============================================================================
