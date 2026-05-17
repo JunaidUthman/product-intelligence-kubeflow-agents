@@ -60,53 +60,7 @@ Every step runs as an **isolated container** on Kubernetes, scheduled and monito
 
 ## 🏗️ Architecture Overview
 
-```mermaid
-graph TD
-    classDef kfp fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b
-    classDef pod fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100
-    classDef db fill:#f1f8e9,stroke:#33691e,stroke-width:2px,color:#33691e
-    classDef hf fill:#fff,stroke:#ff9800,stroke-width:2px,color:#e65100
-    
-    subgraph DAG[KUBEFLOW PIPELINE DAG]
-        direction TB
-        
-        Gen[Generator Agent]:::pod
-        
-        subgraph ParallelFor[ParallelFor Loop]
-            direction LR
-            S1[Scraper Blackview]:::pod
-            S2[Scraper Techsavers]:::pod
-            S3[Scraper ...]:::pod
-        end
-        
-        PVC[(Shared PVC)]:::db
-        
-        Proc[Processor Agent]:::pod
-        MySQL[(MySQL)]:::db
-        
-        Rank[Ranking Agent]:::pod
-        
-        Train[Training Agent]:::pod
-        Hub[Hugging Face Hub]:::hf
-        
-        Gen -->|Spawns| ParallelFor
-        S1 -.->|Writes JSON| PVC
-        S2 -.->|Writes JSON| PVC
-        S3 -.->|Writes JSON| PVC
-        
-        ParallelFor --> Proc
-        PVC -.->|Reads JSON| Proc
-        
-        Proc -->|Inserts Clean Data| MySQL
-        Proc --> Rank
-        
-        Rank -->|Updates Scores| MySQL
-        Rank --> Train
-        
-        MySQL -.->|Reads History| Train
-        Train -->|Uploads Model| Hub
-    end
-```
+![Pipeline Architecture](assets/pipeline_architecture.png)
 
 **Shared Infrastructure:**
 - 📦 `product-intel-pvc` — A `ReadWriteMany` Persistent Volume Claim mounted at `/app/data`. Used by the Scraper pods to write JSON files **and** by the Processor pod to read them. This is the communication channel between the parallel scraping step and the processing step.
@@ -117,26 +71,6 @@ graph TD
 ## 🚦 Pipeline Orchestration (Kubeflow DAG)
 
 The pipeline is defined in `src/pipeline/kfp_pipeline.py` using the **KFP v2 Python SDK** and compiled to `product_intel_pipeline.yaml`.
-
-### Step-by-step Execution Flow
-
-```
-Step 1 ── generator-task        →  Produces: List of 3 scraping targets (JSON)
-            │
-Step 2 ── scraping-group        →  ParallelFor: Launches 1 Pod per target SIMULTANEOUSLY
-            │  Scraper (Blackview)   writes → /app/data/scraped_Blackview_phones.json
-            │  Scraper (Techsavers)  writes → /app/data/scraped_Techsavers_pcs.json
-            │  Scraper (RollingSquare) writes → /app/data/scraped_Rolling_Square_chargers.json
-            │
-            ▼ (fan-in: waits for ALL scrapers to finish)
-Step 3 ── processor-task        →  Reads PVC, cleans data, inserts into MySQL
-            │
-            ▼
-Step 4 ── ranking-task          →  Reads MySQL, calculates composite scores
-            │
-            ▼
-Step 5 ── training-task         →  Reads MySQL history, trains XGBoost, pushes to HuggingFace
-```
 
 ### Key DAG Design Decisions
 
