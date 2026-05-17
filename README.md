@@ -16,7 +16,6 @@
    - [Processor Agent](#3-processor-agent)
    - [Ranking Agent](#4-ranking-agent)
    - [Training Agent](#5-training-agent)
-   - [Historical Data Generator](#6-historical-data-generator-utility)
 6. [Database Schema](#-database-schema)
 7. [Ranking Score Formula](#-ranking-score-formula)
 8. [ML Model: Price Trend Prediction](#-ml-model-price-trend-prediction)
@@ -61,33 +60,52 @@ Every step runs as an **isolated container** on Kubernetes, scheduled and monito
 
 ## 🏗️ Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         KUBEFLOW PIPELINE DAG                           │
-│                                                                         │
-│  ┌───────────┐      ┌──────────────────────────────┐                   │
-│  │ Generator │─────▶│        ParallelFor Loop       │                   │
-│  │  Agent    │      │  ┌──────────┐ ┌──────────┐   │                   │
-│  └───────────┘      │  │ Scraper  │ │ Scraper  │..│                   │
-│                     │  │Blackview │ │Techsavers│  │                   │
-│                     │  └────┬─────┘ └────┬─────┘   │                   │
-│                     └───────┼────────────┼──────────┘                   │
-│                             │   (PVC)    │                              │
-│                             ▼            ▼                              │
-│                       ┌───────────────────┐                            │
-│                       │  Processor Agent  │ ── ▶ MySQL                 │
-│                       └─────────┬─────────┘                            │
-│                                 │                                       │
-│                                 ▼                                       │
-│                       ┌───────────────────┐                            │
-│                       │  Ranking Agent    │ ── ▶ MySQL (scores)        │
-│                       └─────────┬─────────┘                            │
-│                                 │                                       │
-│                                 ▼                                       │
-│                       ┌───────────────────┐                            │
-│                       │  Training Agent   │ ── ▶ Hugging Face Hub      │
-│                       └───────────────────┘                            │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    classDef kfp fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b
+    classDef pod fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100
+    classDef db fill:#f1f8e9,stroke:#33691e,stroke-width:2px,color:#33691e
+    classDef hf fill:#fff,stroke:#ff9800,stroke-width:2px,color:#e65100
+    
+    subgraph DAG[KUBEFLOW PIPELINE DAG]
+        direction TB
+        
+        Gen[Generator Agent]:::pod
+        
+        subgraph ParallelFor[ParallelFor Loop]
+            direction LR
+            S1[Scraper Blackview]:::pod
+            S2[Scraper Techsavers]:::pod
+            S3[Scraper ...]:::pod
+        end
+        
+        PVC[(Shared PVC)]:::db
+        
+        Proc[Processor Agent]:::pod
+        MySQL[(MySQL)]:::db
+        
+        Rank[Ranking Agent]:::pod
+        
+        Train[Training Agent]:::pod
+        Hub[Hugging Face Hub]:::hf
+        
+        Gen -->|Spawns| ParallelFor
+        S1 -.->|Writes JSON| PVC
+        S2 -.->|Writes JSON| PVC
+        S3 -.->|Writes JSON| PVC
+        
+        ParallelFor --> Proc
+        PVC -.->|Reads JSON| Proc
+        
+        Proc -->|Inserts Clean Data| MySQL
+        Proc --> Rank
+        
+        Rank -->|Updates Scores| MySQL
+        Rank --> Train
+        
+        MySQL -.->|Reads History| Train
+        Train -->|Uploads Model| Hub
+    end
 ```
 
 **Shared Infrastructure:**
@@ -254,22 +272,6 @@ The model predicts the **price direction at J+7 (7 sessions ahead)**:
 - **Split:** Temporal (80% past / 20% most recent data) — no random shuffling to prevent data leakage.
 - **Export:** Saved as `models/xgboost_trend_model.pkl` using `joblib`.
 - **Publish:** Uploaded to [JunaidUTH/product-price-evolution](https://huggingface.co/JunaidUTH/product-price-evolution) on Hugging Face Hub via the `HfApi`.
-
----
-
-### 6. Historical Data Generator (Utility)
-**File:** `src/agents/generate_historical_data.py`
-
-A standalone **utility script** (not part of the Kubeflow pipeline) used to **bootstrap synthetic historical data** for model training when real historical data is insufficient.
-
-It takes the most recent real session as a baseline and generates N synthetic backdated sessions, assigning one of four price **behavior profiles** to each product:
-
-| Profile | Behavior |
-|---|---|
-| `DECREASING` | Price higher in the past, steadily falls toward present |
-| `CYCLIC` | Sinusoidal oscillation (simulates promotional sale cycles every ~10 days) |
-| `VOLATILE` | Random ±4% noise around base price |
-| `STABLE` | Near-constant price (±0.5% noise) |
 
 ---
 
@@ -440,8 +442,7 @@ product-intelligence/
         ├── scraper_agent.py          # Step 2: AI-assisted 3-phase web scraper
         ├── processor_agent.py        # Step 3: Data cleaning, normalization, DB insert
         ├── ranking_agent.py          # Step 4: Composite score calculation
-        ├── train_price_trend_model.py# Step 5: XGBoost training + HF upload
-        └── generate_historical_data.py # Utility: Synthetic backdated data generator
+        └── train_price_trend_model.py# Step 5: XGBoost training + HF upload
 ```
 
 ---
