@@ -48,7 +48,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install KFP SDK
-        run: pip install kfp kfp-kubernetes
+        run: pip install kfp kfp-kubernetes==1.1.0
 
       - name: Compile KFP Pipeline YAML
         env:
