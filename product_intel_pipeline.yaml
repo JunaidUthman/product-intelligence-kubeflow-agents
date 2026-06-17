@@ -86,7 +86,7 @@ deploymentSpec:
         - '{{$.outputs.parameters[''output_list''].output_file}}'
         command:
         - python3
-        image: product-intel-agents:v6
+        image: junaiduthman/product-intel-agents:v-1f7c921
     exec-processor-task:
       container:
         args:
@@ -96,14 +96,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:v6
+        image: junaiduthman/product-intel-agents:v-1f7c921
     exec-ranking-task:
       container:
         args:
         - src/agents/ranking_agent.py
         command:
         - python3
-        image: product-intel-agents:v6
+        image: junaiduthman/product-intel-agents:v-1f7c921
     exec-scraper-task:
       container:
         args:
@@ -121,14 +121,14 @@ deploymentSpec:
         env:
         - name: DATA_DIR
           value: /app/data
-        image: product-intel-agents:v6
+        image: junaiduthman/product-intel-agents:v-1f7c921
     exec-training-task:
       container:
         args:
         - src/agents/train_price_trend_model.py
         command:
         - python3
-        image: product-intel-agents:v6
+        image: junaiduthman/product-intel-agents:v-1f7c921
 pipelineInfo:
   description: 'Pipeline A to Z : Generation -> Parallel Scraping -> Processing ->
     Ranking -> Training'
@@ -186,7 +186,7 @@ root:
         taskInfo:
           name: training-task
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.2.0
+sdkVersion: kfp-2.16.1
 ---
 platforms:
   kubernetes:
@@ -196,89 +196,171 @@ platforms:
           pvcMount:
           - constant: product-intel-pvc
             mountPath: /app/data
+            pvcNameParameter:
+              runtimeValue:
+                constant: product-intel-pvc
           secretAsEnv:
           - keyToEnv:
             - envVar: MYSQL_HOST
               secretKey: MYSQL_HOST
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_USER
               secretKey: MYSQL_USER
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_PASSWORD
               secretKey: MYSQL_PASSWORD
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_DATABASE
               secretKey: MYSQL_DATABASE
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
         exec-ranking-task:
           secretAsEnv:
           - keyToEnv:
             - envVar: MYSQL_HOST
               secretKey: MYSQL_HOST
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_USER
               secretKey: MYSQL_USER
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_PASSWORD
               secretKey: MYSQL_PASSWORD
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_DATABASE
               secretKey: MYSQL_DATABASE
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
         exec-scraper-task:
           pvcMount:
           - constant: product-intel-pvc
             mountPath: /app/data
+            pvcNameParameter:
+              runtimeValue:
+                constant: product-intel-pvc
           secretAsEnv:
           - keyToEnv:
             - envVar: MYSQL_HOST
               secretKey: MYSQL_HOST
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_USER
               secretKey: MYSQL_USER
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_PASSWORD
               secretKey: MYSQL_PASSWORD
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_DATABASE
               secretKey: MYSQL_DATABASE
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: DEEPSEEK_API_KEY
               secretKey: DEEPSEEK_API_KEY
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
         exec-training-task:
           secretAsEnv:
           - keyToEnv:
             - envVar: MYSQL_HOST
               secretKey: MYSQL_HOST
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_USER
               secretKey: MYSQL_USER
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_PASSWORD
               secretKey: MYSQL_PASSWORD
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: MYSQL_DATABASE
               secretKey: MYSQL_DATABASE
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: HF_TOKEN
               secretKey: HF_TOKEN
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
           - keyToEnv:
             - envVar: HF_REPO_ID
               secretKey: HF_REPO_ID
+            optional: false
             secretName: product-intel-secrets
+            secretNameParameter:
+              runtimeValue:
+                constant: product-intel-secrets
