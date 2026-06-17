@@ -12,21 +12,21 @@ def get_scraping_targets() -> List[Dict[str, str]]:
         # ==========================================
         # 1. TÉLÉPHONES (PHONES)
         # ==========================================
-        {
-            "nom_boutique": "Blackview",
-            "url": "https://store.blackview.hk/collections/smartphones",
-            "platform": "shopify",
-            "category": "phones"
-        },
-        # ==========================================
-        # 2. ORDINATEURS & MINI PCS (PCS)
-        # ==========================================
-        {
-            "nom_boutique": "Techsavers",
-            "url": "https://techsavers.com/collections/laptops",
-            "platform": "shopify",
-            "category": "pcs"
-        },
+        # {
+        #     "nom_boutique": "Blackview",
+        #     "url": "https://store.blackview.hk/collections/smartphones",
+        #     "platform": "shopify",
+        #     "category": "phones"
+        # },
+        # # ==========================================
+        # # 2. ORDINATEURS & MINI PCS (PCS)
+        # # ==========================================
+        # {
+        #     "nom_boutique": "Techsavers",
+        #     "url": "https://techsavers.com/collections/laptops",
+        #     "platform": "shopify",
+        #     "category": "pcs"
+        # },
 
         # ==========================================
         # 3. CHARGEURS & ALIMENTATION (CHARGERS)
