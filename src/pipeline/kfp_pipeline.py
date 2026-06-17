@@ -8,7 +8,8 @@ from kfp.compiler import Compiler
 # ==============================================================================
 PVC_NAME = "product-intel-pvc"
 SECRET_NAME = "product-intel-secrets"
-IMAGE_NAME = "product-intel-agents:v6"
+# Optimized for CI/CD: Reads from env var, defaults to 'latest' if not set
+IMAGE_NAME = os.getenv("PIPELINE_IMAGE", "junaiduthman/product-intel-agents:latest")
 DATA_DIR = "/app/data"
 
 # ==============================================================================
