@@ -114,8 +114,22 @@ def product_intel_pipeline():
 # COMPILATION
 # ==============================================================================
 if __name__ == "__main__":
+    yaml_path = "product_intel_pipeline.yaml"
     Compiler().compile(
         pipeline_func=product_intel_pipeline,
-        package_path="product_intel_pipeline.yaml"
+        package_path=yaml_path
     )
-    print("✅ Pipeline compilé avec succès : product_intel_pipeline.yaml")
+    
+    # --- POST-PROCESSING FIX FOR KFP COMPATIBILITY ---
+    # The newer kfp-kubernetes SDK injects `optional: false` into SecretAsEnv blocks,
+    # which causes older Kubeflow drivers to crash with an unmarshal error.
+    # We manually strip these lines out of the compiled YAML.
+    with open(yaml_path, "r") as f:
+        yaml_content = f.read()
+    
+    yaml_content = yaml_content.replace("            optional: false\n", "")
+    
+    with open(yaml_path, "w") as f:
+        f.write(yaml_content)
+        
+    print(f"✅ Pipeline compilé et patché avec succès : {yaml_path}")
