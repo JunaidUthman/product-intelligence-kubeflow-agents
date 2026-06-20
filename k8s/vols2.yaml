@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: product-intel-pvc
+  # Assuming you deploy your pipeline to the kubeflow namespace
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteMany  # CRITICAL for parallel scrapers!
+  storageClassName: efs-sc  # AWS EFS StorageClass (to be installed via Terraform/EFS CSI)
+  resources:
+    requests:
+      storage: 10Gi

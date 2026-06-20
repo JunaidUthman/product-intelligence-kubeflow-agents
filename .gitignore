@@ -6,4 +6,3 @@ __pycache__/
 models/
 generate_historical_data.py
 bulk_ranking_agent.py
-k8s/

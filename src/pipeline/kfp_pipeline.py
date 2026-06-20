@@ -121,19 +121,13 @@ if __name__ == "__main__":
     )
     
     # --- POST-PROCESSING FIX FOR KFP COMPATIBILITY ---
-    import re
+    # The newer kfp-kubernetes SDK injects `optional: false` into SecretAsEnv blocks,
+    # which causes older Kubeflow drivers to crash with an unmarshal error.
+    # We manually strip these lines out of the compiled YAML.
     with open(yaml_path, "r") as f:
         yaml_content = f.read()
     
-    # Remove 'optional: false'
     yaml_content = yaml_content.replace("            optional: false\n", "")
-    
-    # Remove 'secretNameParameter' block (which spans multiple lines)
-    # This block usually looks like:
-    #             secretNameParameter:
-    #               runtimeValue:
-    #                 constant: product-intel-secrets
-    yaml_content = re.sub(r'\s*secretNameParameter:\s*runtimeValue:\s*constant: product-intel-secrets\n?', '', yaml_content)
     
     with open(yaml_path, "w") as f:
         f.write(yaml_content)
