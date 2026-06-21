@@ -5,4 +5,11 @@ data/
 __pycache__/
 models/
 generate_historical_data.py
+k8s/realsecrets.yaml
 bulk_ranking_agent.py
+
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfvars
