@@ -1,6 +1,8 @@
 # 🧠 Product Intelligence — Kubeflow ML Pipeline
 
-> A production-ready, AI-assisted data pipeline that automatically scrapes e-commerce product data, cleans and stores it, ranks products using a composite scoring algorithm, and trains a price-trend prediction model — fully orchestrated on **Kubeflow Pipelines** running on **Kubernetes (Minikube)**.
+> A production-ready, AI-assisted data pipeline that automatically scrapes e-commerce product data, cleans and stores it, ranks products using a composite scoring algorithm, and trains a price-trend prediction model — fully orchestrated on **Kubeflow Pipelines** running on **Kubernetes**.
+
+> ⚠️ **This repository is one part of a larger, full-stack product intelligence platform.** It handles the data collection, processing, and ML training pipeline only. The complete system also includes a consumer-facing web application, an MCP server for AI-powered querying, and a price prediction inference API. See the [Related Repositories](#-related-repositories) section for the full picture.
 
 ---
 
@@ -22,6 +24,7 @@
 9. [Deployment Guide](#-deployment-guide)
 10. [Project Structure](#-project-structure)
 11. [Environment Variables](#-environment-variables)
+12. [Related Repositories](#-related-repositories)
 
 ---
 
@@ -43,7 +46,7 @@ Every step runs as an **isolated container** on Kubernetes, scheduled and monito
 
 | Layer               | Technology                                                                 |
 |---------------------|----------------------------------------------------------------------------|
-| **Orchestration**   | Kubeflow Pipelines v2.2 (Argo Workflows backend) on Minikube               |
+| **Orchestration**   | Kubeflow Pipelines v2.2 on kubernetes in prod and minikube in dev               |
 | **Containerization**| Docker, `mcr.microsoft.com/playwright:v1.42.0-jammy` base image            |
 | **Browser Automation** | Playwright (asynchronous Chromium)                                      |
 | **AI / LLM**        | DeepSeek-Chat via OpenAI-compatible SDK (CSS selector & data extraction)   |
@@ -60,11 +63,7 @@ Every step runs as an **isolated container** on Kubernetes, scheduled and monito
 
 ## 🏗️ Architecture Overview
 
-![Pipeline Architecture](assets/pipeline_architecture.png)
-
-**Shared Infrastructure:**
-- 📦 `product-intel-pvc` — A `ReadWriteMany` Persistent Volume Claim mounted at `/app/data`. Used by the Scraper pods to write JSON files **and** by the Processor pod to read them. This is the communication channel between the parallel scraping step and the processing step.
-- 🔐 `product-intel-secrets` — A Kubernetes Secret injected as environment variables into each pod (MySQL credentials, API keys, HF token).
+![Dev Architecture](assets/product_intel_production_arch.png)
 
 ---
 
@@ -290,67 +289,91 @@ The model is **retrained on every pipeline run**, ensuring it always reflects th
 
 ---
 
-## 🚀 Deployment Guide
+## 🚀 Deployment Guide & DevOps
 
-### Prerequisites
+This project supports two primary modes of operation:
+1. **Development Mode (Local)**: Runs locally on Minikube.
+2. **Production Mode (AWS Cloud)**: Runs on Amazon EKS using Terraform.
+
+### 🔄 DevOps & CI/CD Pipeline
+We have integrated a full **GitOps / CI/CD pipeline** using GitHub Actions (`.github/workflows/pipeline-ci.yml`). 
+Whenever new code is pushed to the `main` branch, the pipeline automatically:
+1. Builds a fresh Docker image containing your updated Agent code.
+2. Tags the image dynamically using the Git commit hash.
+3. Pushes the image to **DockerHub**.
+4. Re-compiles the `product_intel_pipeline.yaml` using the new Docker image tag and commits it back to the repository.
+
+*You no longer need to manually build or update Docker image names. Just push your code, wait 60 seconds, and your new YAML is ready for Kubeflow!*
+
+---
+
+### ☁️ Production Mode (AWS Cloud)
+
+> **💡 Budget Architecture Note:** To optimize costs, only the core **Kubernetes Cluster (EKS)** and the **MySQL Database (RDS)** are currently hosted inside AWS. In a full-potential enterprise scenario, all external components (like Model Serving, Image Registries, and AI APIs) would also be migrated natively into the AWS ecosystem.
+
+![AWS Cloud Architecture](assets/product_intel_production_arch.png)
+
+#### 1. Build the Infrastructure
+Navigate to the `terraform/` directory. The Terraform scripts will automatically provision:
+- A secure AWS VPC.
+- A minimalist EKS Cluster (`t3.large` nodes).
+- An EFS Shared Network Drive (for parallel scraping).
+- An RDS MySQL Database (`db.t3.micro`).
+
+```bash
+cd terraform/
+terraform init
+terraform apply
+```
+*(Terraform will output your `rds_endpoint` and `rds_password` at the end).*
+
+#### 2. Apply Secrets Securely
+1. Open `k8s/secrets.yaml` and replace the placeholder values with your real API keys and the new **RDS credentials**.
+2. Run the command to inject them into the cluster:
+   ```bash
+   kubectl apply -f k8s/secrets.yaml
+   ```
+3. **CRITICAL:** Press `CTRL+Z` in your code editor or run `git restore k8s/secrets.yaml` to revert the file to fake placeholders so you don't leak passwords to GitHub.
+
+#### 3. Post-Cluster Setup
+Once the cluster is up, apply your cloud storage configuration and install Kubeflow Pipelines Standalone:
+```bash
+# Attach the AWS EFS storage
+kubectl apply -f k8s/vols2.yaml
+
+# Install Lightweight Kubeflow Pipelines
+export PIPELINE_VERSION=2.4.1
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
+kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
+```
+
+#### 4. Run the Pipeline
+Port-forward the UI to your local machine (since the cloud cluster is private):
+```bash
+kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8080:80
+```
+Open `http://localhost:8080`, upload the `product_intel_pipeline.yaml`, and start a run!
+
+---
+
+### 💻 Development Mode (Local Minikube)
+
+#### Prerequisites
 - Minikube running with Kubeflow Pipelines installed
 - Docker available
 - MySQL accessible from Minikube (local or in-cluster)
 
-### Step 1 – Build & Load the Docker Image
-
-```bash
-# Point Docker CLI to Minikube's internal Docker daemon
-eval $(minikube docker-env)
-
-# Build the image from the project root
-docker build -t product-intel-agents:v3 .
-
-# Load into Minikube cache (ensures no remote pull)
-minikube image load product-intel-agents:v3
-```
-
-### Step 2 – Apply Storage Manifests
-
+#### Step 1 – Apply Storage & Secrets
 ```bash
 kubectl apply -f k8s/vols.yaml
+kubectl apply -f k8s/secrets.yaml # Edit with your local DB credentials first!
 ```
 
-This creates:
-- `product-intel-pv` — A 5Gi `hostPath` PersistentVolume at `/mnt/data/product-intel`.
-- `product-intel-pvc` — A `ReadWriteMany` PVC in the `kubeflow` namespace bound to the above PV.
-
-### Step 3 – Create the Kubernetes Secret
-
-```bash
-kubectl create secret generic product-intel-secrets \
-  --namespace kubeflow \
-  --from-literal=MYSQL_HOST="host.minikube.internal" \
-  --from-literal=MYSQL_USER="root" \
-  --from-literal=MYSQL_PASSWORD="your_password" \
-  --from-literal=MYSQL_DATABASE="product_intelligence" \
-  --from-literal=DEEPSEEK_API_KEY="your_deepseek_key" \
-  --from-literal=HF_TOKEN="your_hf_token" \
-  --from-literal=HF_REPO_ID="JunaidUTH/product-price-evolution"
-```
-
-> ⚠️ If using a local MySQL, ensure it listens on `0.0.0.0` (`bind-address = 0.0.0.0` in `mysqld.cnf`) and that the user has remote connection privileges (`GRANT ALL ON *.* TO 'root'@'%'`).
-
-### Step 4 – (Re)compile the Pipeline YAML
-
-```bash
-# Uses a temporary venv to avoid polluting the system Python
-python3 -m venv /tmp/venv_kfp
-/tmp/venv_kfp/bin/pip install kfp kfp-kubernetes
-/tmp/venv_kfp/bin/python3 src/pipeline/kfp_pipeline.py
-# → Generates: product_intel_pipeline.yaml
-```
-
-### Step 5 – Upload & Run on Kubeflow
-
+#### Step 2 – Upload & Run on Kubeflow
 1. Open the **Kubeflow Central Dashboard** in your browser.
 2. Navigate to **Pipelines → Upload Pipeline**.
-3. Upload `product_intel_pipeline.yaml`.
+3. Upload `product_intel_pipeline.yaml` (which is auto-generated by the CI/CD pipeline).
 4. Click **Create Run** and watch the DAG execute in real-time.
 
 ---
@@ -385,15 +408,27 @@ product-intelligence/
 
 | Variable | Used By | Description |
 |---|---|---|
-| `MYSQL_HOST` | Processor, Ranking, Training | MySQL host (e.g., `host.minikube.internal`) |
+| `MYSQL_HOST` | Processor, Ranking, Training | MySQL host (in dev :, `host.minikube.internal` in prod u can get the password of the database when the terraform stack is deployed) |
 | `MYSQL_USER` | Processor, Ranking, Training | MySQL username |
 | `MYSQL_PASSWORD` | Processor, Ranking, Training | MySQL password |
 | `MYSQL_DATABASE` | Processor, Ranking, Training | Target database name |
-| `DATA_DIR` | Scraper, Processor | Path to shared PVC mount (e.g., `/app/data`) |
+| `DATA_DIR` | Scraper, Processor | Path to shared PVC mount (in dev : `/app/data`, in prod u can use EFS) |
 | `DEEPSEEK_API_KEY` | Scraper | API key for DeepSeek LLM |
 | `DEEPSEEK_BASE_URL` | Scraper | DeepSeek endpoint (default: `https://api.deepseek.com`) |
 | `HF_TOKEN` | Training | Hugging Face write token |
 | `HF_REPO_ID` | Training | Target HF model repository (e.g., `JunaidUTH/product-price-evolution`) |
+
+---
+
+## 🔗 Related Repositories
+
+This pipeline is the **data & ML backbone** of a larger product intelligence platform. Here are the companion repositories that complete the full system:
+
+| Repository | Description |
+|---|---|
+| [**product-intelligence-web-application**](https://github.com/JunaidUthman/product-intelligence-web-application) | Consumer-facing Next.js web app — product explorer, price history charts, and AI chatbot powered by the MCP server |
+| [**product-intelligence-mcp-server**](https://github.com/JunaidUthman/product-intelligence-mcp-server) | Model Context Protocol (MCP) server exposing a `search_products_scored_by_AI` tool that translates natural language queries into SQL and returns structured product data |
+| [**price-evolution-ml-model-api**](https://github.com/JunaidUthman/price-evolution-ml-model-api) | FastAPI inference server that loads the XGBoost price-trend model from Hugging Face Hub and serves real-time price-direction predictions (`DROP` / `STABLE` / `RISE`) |
 
 ---
 
