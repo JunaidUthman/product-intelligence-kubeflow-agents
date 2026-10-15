@@ -29,9 +29,8 @@ jobs:
 
       - name: Install dependencies & testing tools
         run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-mock
-          pip install -r src/requirements.txt
+          python -m pip install --upgrade pip uv
+          uv pip install --system pytest pytest-mock -r src/requirements.txt
 
       - name: Run Agent Unit Tests
         env:
@@ -62,7 +61,7 @@ jobs:
           tags: ${{ env.IMAGE_TAG }}
 
       - name: Install KFP SDK
-        run: pip install kfp kfp-kubernetes==1.1.0
+        run: uv pip install --system kfp kfp-kubernetes==1.1.0
 
       - name: Compile KFP Pipeline YAML
         env:
